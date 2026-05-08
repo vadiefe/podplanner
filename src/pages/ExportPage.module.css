@@ -1,0 +1,40 @@
+.exportGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 640px) {
+  .exportGrid { grid-template-columns: 1fr; }
+}
+
+.exportOption {
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.exportIcon { font-size: 28px; }
+.exportIcon .ti { font-size: 28px; }
+
+.exportInfo h3 { font-size: 14px; font-weight: 600; margin-bottom: 5px; }
+.exportInfo p { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+
+.hint {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: var(--blue-bg);
+  color: var(--blue);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+}
+.hint .ti { flex-shrink: 0; margin-top: 1px; }
+
+.actions { margin-top: 4px; }

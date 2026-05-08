@@ -1,0 +1,94 @@
+.card {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+.cardAccent { border-color: #378add; border-width: 1.5px; }
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 1rem;
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 0.5px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--surface-2); }
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btnPrimary { background: var(--text); color: var(--accent-fg); border-color: transparent; }
+.btnPrimary:hover { opacity: 0.85; background: var(--text); }
+.btnDanger { border-color: rgba(162,45,45,0.3); color: var(--red); }
+.btnDanger:hover { background: var(--red-bg); }
+.btnSm { padding: 5px 10px; font-size: 12px; }
+
+.formGroup { margin-bottom: 1rem; }
+.label { display: block; font-size: 12px; font-weight: 500; color: var(--text-2); margin-bottom: 5px; }
+
+.input {
+  width: 100%;
+  padding: 8px 11px;
+  border: 0.5px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  transition: border-color 0.12s;
+}
+.input:focus { outline: none; border-color: var(--text); }
+
+.textarea {
+  composes: input;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.row { display: flex; gap: 1rem; }
+.col { flex: 1; min-width: 0; }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.tagGreen { background: var(--green-bg); color: var(--green); }
+.tagBlue { background: var(--blue-bg); color: var(--blue); }
+.tagAmber { background: var(--amber-bg); color: var(--amber); }
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+.metricCard { background: var(--surface-2); border-radius: var(--radius-sm); padding: 14px; }
+.metricLabel { font-size: 11px; color: var(--text-3); margin-bottom: 4px; }
+.metricVal { font-size: 22px; font-weight: 600; line-height: 1; }
+
+.empty { text-align: center; padding: 3rem 1rem; }
+.empty .ti { font-size: 36px; display: block; margin-bottom: 12px; color: var(--text-3); }
+.emptyTitle { font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+.emptySub { font-size: 13px; color: var(--text-2); }

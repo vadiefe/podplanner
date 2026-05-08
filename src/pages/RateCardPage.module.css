@@ -1,0 +1,103 @@
+.dropZone {
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--surface-2);
+}
+.dropZone:hover, .dragging {
+  border-color: var(--text);
+  background: var(--surface);
+}
+.dropZone .ti { font-size: 28px; color: var(--text-3); display: block; margin-bottom: 8px; }
+.dropZone p { font-size: 14px; color: var(--text-2); }
+.dropZone small { font-size: 12px; color: var(--text-3); }
+
+.statusBanner {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.loading { background: var(--blue-bg); color: var(--blue); }
+.success { background: var(--green-bg); color: var(--green); }
+.error { background: var(--red-bg); color: var(--red); }
+
+.mappingHint { font-size: 13px; color: var(--text-2); margin-bottom: 1rem; }
+.mappingGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 1rem;
+}
+.mappingActions { display: flex; gap: 8px; }
+
+.tableHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.tableActions { display: flex; gap: 8px; }
+
+.tableWrap {
+  overflow-x: auto;
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 640px;
+}
+.table th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 0.5px solid var(--border);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+.table td {
+  padding: 9px 12px;
+  border-bottom: 0.5px solid var(--border);
+  vertical-align: middle;
+}
+.table tr:last-child td { border-bottom: none; }
+.table tr:hover td { background: var(--surface-2); }
+
+.bold { font-weight: 500; }
+.muted { color: var(--text-3); }
+.descCell {
+  font-size: 12px;
+  color: var(--text-2);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cellInput {
+  width: 100%;
+  padding: 4px 7px;
+  border: 0.5px solid var(--border-strong);
+  border-radius: 5px;
+  font-size: 12px;
+  background: var(--surface);
+  color: var(--text);
+  min-width: 80px;
+}
+.cellInput:focus { outline: none; border-color: var(--text); }
+
+.rowActions { display: flex; gap: 4px; }
+.pageActions { margin-top: 14px; text-align: right; }
