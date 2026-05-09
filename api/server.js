@@ -128,10 +128,10 @@ app.post('/api/enrich-shows', async (req, res) => {
   if (!Array.isArray(shows) || !shows.length) return res.status(400).json({ error: 'No shows provided' })
 
   try {
-    // Build a compact representation of each show with its raw unmapped data
     const showsForAI = shows.map((s, i) => ({
       index: i,
-      mappedFields: {
+      // What we already extracted via column mapping
+      currentFields: {
         name: s.show.name,
         adNetwork: s.show.adNetwork,
         category: s.show.category,
@@ -143,42 +143,73 @@ app.post('/api/enrich-shows', async (req, res) => {
         hostLocation: s.show.hostLocation,
         demographics: s.show.demographics,
         url: s.show.url,
+        showBio: s.show.showBio,
       },
-      // All original columns from the file row — may contain info not mapped above
-      rawRow: s.rawRow
+      // The complete original row from the file — may have extra or overlapping columns
+      fullRawRow: s.rawRow
     }))
 
-    const prompt = `You are analyzing podcast show data imported from a rate card file.
-For each show below, do TWO things:
-1. Write a "showBio" — a clear 1-3 sentence description of what the show is about, based on any available info (name, category, description columns, etc.)
-2. Write "additionalNotes" — a concise summary of ANY useful information in the rawRow that is NOT already captured in the mappedFields. Include things like: editorial guidelines, booking contacts, audience insights, seasonal availability, special packages, past advertisers, social stats, awards, host background, unique selling points, etc. If nothing extra exists, write an empty string.
+    const prompt = `You are a media planning data analyst. You have received podcast show data imported from a rate card file.
+For each show, you have:
+1. "currentFields" — what was already extracted via column mapping (may be empty/zero if not mapped)
+2. "fullRawRow" — the complete original row from the file with ALL columns
+
+Your job is to produce a complete, enriched show record by:
+- Reading the ENTIRE fullRawRow carefully
+- Filling in any currentFields that are missing/empty/zero if the data exists somewhere in fullRawRow
+- Consolidating related info that may be spread across multiple columns (e.g. "female %" + "male %" + "age 25-34" → demographics)
+- Writing a clear showBio (1-3 sentences about what the show is, who hosts it, what topics it covers)
+- Writing additionalNotes with ANY remaining useful info not captured in structured fields: booking contacts, editorial guidelines, social media stats, audience psychographics, seasonal availability, packages, past advertiser categories, awards, unique selling points, etc. Be thorough — this context helps AI media planners. Leave empty string if truly nothing extra.
 
 Shows to analyze:
 ${JSON.stringify(showsForAI, null, 2)}
 
-Respond ONLY with a JSON array in this exact format, one entry per show, preserving index order:
+Return ONLY a JSON array. One object per show, index preserved:
 [
-  { "index": 0, "showBio": "...", "additionalNotes": "..." },
-  { "index": 1, "showBio": "...", "additionalNotes": "..." }
+  {
+    "index": 0,
+    "name": "...",
+    "adNetwork": "...",
+    "category": "...",
+    "listenersPerEp": 0,
+    "listenersMonthly": 0,
+    "releaseFrequency": "...",
+    "cpm": 0,
+    "sponsorshipTypes": "...",
+    "hostLocation": "...",
+    "demographics": "...",
+    "url": "...",
+    "showBio": "...",
+    "additionalNotes": "..."
+  }
 ]
-No markdown, no explanation.`
+Rules:
+- listenersPerEp and listenersMonthly must be integers (0 if unknown)
+- cpm must be a number (0 if unknown)
+- All other fields are strings
+- Never invent data not present in fullRawRow
+- No markdown, no explanation, just the JSON array`
 
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 4000,
+      model: 'claude-opus-4-5',
+      max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }]
     })
 
-    const txt = response.content[0].text.replace(/\`\`\`json|\`\`\`/g, '').trim()
+    const txt = response.content[0].text.replace(/```json|```/g, '').trim()
     const enriched = JSON.parse(txt)
 
-    // Merge AI output back into shows
+    // Merge AI output back, preserving original id
     const result = shows.map((s, i) => {
       const match = enriched.find(e => e.index === i) || {}
       return {
-        ...s.show,
-        showBio: match.showBio || '',
-        additionalNotes: match.additionalNotes || ''
+        ...s.show,           // base (has id, etc.)
+        ...match,            // AI-enriched fields overwrite
+        index: undefined,    // remove the index field
+        id: s.show.id,       // always preserve original id
+        listenersPerEp: parseInt(match.listenersPerEp) || s.show.listenersPerEp || 0,
+        listenersMonthly: parseInt(match.listenersMonthly) || s.show.listenersMonthly || 0,
+        cpm: parseFloat(match.cpm) || s.show.cpm || 0,
       }
     })
 
@@ -246,7 +277,7 @@ app.post('/api/parse-file', upload.single('file'), async (req, res) => {
       const base64 = buffer.toString('base64')
 
       const response = await anthropic.messages.create({
-        model: 'claude-opus-4-20250514',
+        model: 'claude-opus-4-5',
         max_tokens: 4000,
         messages: [{
           role: 'user',
@@ -365,7 +396,7 @@ Respond ONLY with valid JSON — no markdown fences, no preamble:
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
+      model: 'claude-opus-4-5',
       max_tokens: 3000,
       messages: [{ role: 'user', content: prompt }]
     })
