@@ -128,98 +128,88 @@ app.post('/api/enrich-shows', async (req, res) => {
   if (!Array.isArray(shows) || !shows.length) return res.status(400).json({ error: 'No shows provided' })
 
   try {
-    const showsForAI = shows.map((s, i) => ({
-      index: i,
-      // What we already extracted via column mapping
-      currentFields: {
-        name: s.show.name,
-        adNetwork: s.show.adNetwork,
-        category: s.show.category,
-        listenersPerEp: s.show.listenersPerEp,
-        listenersMonthly: s.show.listenersMonthly,
-        releaseFrequency: s.show.releaseFrequency,
-        cpm: s.show.cpm,
-        sponsorshipTypes: s.show.sponsorshipTypes,
-        hostLocation: s.show.hostLocation,
-        demographics: s.show.demographics,
-        url: s.show.url,
-        showBio: s.show.showBio,
-      },
-      // The complete original row from the file — may have extra or overlapping columns
-      fullRawRow: s.rawRow
-    }))
+    const BATCH_SIZE = 5
+    const allEnriched = []
 
-    const prompt = `You are a media planning data analyst. You have received podcast show data imported from a rate card file.
-For each show, you have:
-1. "currentFields" — what was already extracted via column mapping (may be empty/zero if not mapped)
-2. "fullRawRow" — the complete original row from the file with ALL columns
+    for (let b = 0; b < shows.length; b += BATCH_SIZE) {
+      const batch = shows.slice(b, b + BATCH_SIZE)
 
-Your job is to produce a complete, enriched show record by:
-- Reading the ENTIRE fullRawRow carefully
-- Filling in any currentFields that are missing/empty/zero if the data exists somewhere in fullRawRow
-- Consolidating related info that may be spread across multiple columns (e.g. "female %" + "male %" + "age 25-34" → demographics)
-- Writing a clear showBio (1-3 sentences about what the show is, who hosts it, what topics it covers)
-- Writing additionalNotes with ANY remaining useful info not captured in structured fields: booking contacts, editorial guidelines, social media stats, audience psychographics, seasonal availability, packages, past advertiser categories, awards, unique selling points, etc. Be thorough — this context helps AI media planners. Leave empty string if truly nothing extra.
+      const batchData = batch.map((s, i) => ({
+        index: i,
+        currentFields: {
+          name: s.show.name,
+          adNetwork: s.show.adNetwork,
+          category: s.show.category,
+          listenersPerEp: s.show.listenersPerEp,
+          listenersMonthly: s.show.listenersMonthly,
+          releaseFrequency: s.show.releaseFrequency,
+          cpm: s.show.cpm,
+          sponsorshipTypes: s.show.sponsorshipTypes,
+          hostLocation: s.show.hostLocation,
+          demographics: s.show.demographics,
+          url: s.show.url,
+          showBio: s.show.showBio,
+        },
+        fullRawRow: s.rawRow
+      }))
 
-Shows to analyze:
-${JSON.stringify(showsForAI, null, 2)}
+      const prompt = `You are a media planning data analyst analyzing podcast show data from a rate card file.
+For each show you have currentFields (already extracted) and fullRawRow (complete original file row).
 
-Return ONLY a JSON array. One object per show, index preserved:
-[
-  {
-    "index": 0,
-    "name": "...",
-    "adNetwork": "...",
-    "category": "...",
-    "listenersPerEp": 0,
-    "listenersMonthly": 0,
-    "releaseFrequency": "...",
-    "cpm": 0,
-    "sponsorshipTypes": "...",
-    "hostLocation": "...",
-    "demographics": "...",
-    "url": "...",
-    "showBio": "...",
-    "additionalNotes": "..."
-  }
-]
-Rules:
-- listenersPerEp and listenersMonthly must be integers (0 if unknown)
-- cpm must be a number (0 if unknown)
-- All other fields are strings
-- Never invent data not present in fullRawRow
-- No markdown, no explanation, just the JSON array`
+Your job:
+1. Read the ENTIRE fullRawRow carefully
+2. Fill in any currentFields that are empty/zero/missing if the data exists anywhere in fullRawRow
+3. Consolidate related info spread across columns (e.g. separate gender% columns + age columns → one demographics string)
+4. Write showBio: 1-3 clear sentences about what the show is, who hosts it, what topics it covers
+5. Write additionalNotes: any remaining useful info not in structured fields — booking contacts, editorial guidelines, social stats, psychographics, seasonal availability, packages, past advertiser categories, awards, USPs. Be thorough. Empty string if nothing extra.
 
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
-      max_tokens: 8000,
-      messages: [{ role: 'user', content: prompt }]
-    })
+Shows:
+${JSON.stringify(batchData, null, 2)}
 
-    const txt = response.content[0].text.replace(/```json|```/g, '').trim()
-    const enriched = JSON.parse(txt)
+Return ONLY a JSON array, one object per show:
+[{index:0,name:...,adNetwork:...,category:...,listenersPerEp:0,listenersMonthly:0,releaseFrequency:...,cpm:0,sponsorshipTypes:...,hostLocation:...,demographics:...,url:...,showBio:...,additionalNotes:...}]
 
-    // Merge AI output back, preserving original id
-    const result = shows.map((s, i) => {
-      const match = enriched.find(e => e.index === i) || {}
-      return {
-        ...s.show,           // base (has id, etc.)
-        ...match,            // AI-enriched fields overwrite
-        index: undefined,    // remove the index field
-        id: s.show.id,       // always preserve original id
-        listenersPerEp: parseInt(match.listenersPerEp) || s.show.listenersPerEp || 0,
-        listenersMonthly: parseInt(match.listenersMonthly) || s.show.listenersMonthly || 0,
-        cpm: parseFloat(match.cpm) || s.show.cpm || 0,
+Rules: listenersPerEp/listenersMonthly = integers, cpm = number, all others = strings, never invent data, no markdown.`
+
+      const response = await anthropic.messages.create({
+        model: 'claude-opus-4-5',
+        max_tokens: 3000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+
+      let batchResult = []
+      const raw = response.content[0].text.replace(/```json|```/g, '').trim()
+      try {
+        batchResult = JSON.parse(raw)
+      } catch {
+        // Try to recover partial JSON
+        const m = raw.match(/\[.*\]/s)
+        if (m) { try { batchResult = JSON.parse(m[0]) } catch { batchResult = [] } }
+        console.error('Batch JSON parse failed, recovered:', batchResult.length, 'of', batch.length)
       }
-    })
 
-    res.json({ shows: result })
+      batch.forEach((s, i) => {
+        const match = batchResult.find(e => e.index === i) || {}
+        allEnriched.push({
+          ...s.show,
+          ...match,
+          index: undefined,
+          id: s.show.id,
+          listenersPerEp: parseInt(match.listenersPerEp) || s.show.listenersPerEp || 0,
+          listenersMonthly: parseInt(match.listenersMonthly) || s.show.listenersMonthly || 0,
+          cpm: parseFloat(match.cpm) || s.show.cpm || 0,
+        })
+      })
+
+      console.log('Enriched batch', Math.floor(b/BATCH_SIZE)+1, ':', allEnriched.length, 'total so far')
+    }
+
+    res.json({ shows: allEnriched })
   } catch (err) {
     console.error('Enrich error:', err)
     res.status(500).json({ error: err.message })
   }
 })
-
 // ── Briefs ───────────────────────────────────────────────────────────────────
 
 app.get('/api/briefs', async (req, res) => {

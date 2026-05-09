@@ -243,7 +243,7 @@ export default function RateCardPage({ podcasts, setPodcasts, dbReady, onNext })
     const preliminary = mapped.map(m => m.show)
     setPodcasts(prev => [...prev, ...preliminary])
     setMapping(null)
-    setStatus({ type: 'loading', msg: `✦ AI is reading all columns and generating show bios & notes for ${mapped.length} shows…` })
+    setStatus({ type: 'loading', msg: `✦ AI is reading all columns and enriching ${mapped.length} shows in batches of 5… this may take ${Math.ceil(mapped.length/5)*15}–${Math.ceil(mapped.length/5)*20}s` })
 
     // Call AI enrichment
     try {
