@@ -5,13 +5,16 @@ const { Pool } = pg
 // Railway provides DATABASE_URL automatically when you add a Postgres plugin
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('railway')
-    ? { rejectUnauthorized: false }
-    : false
+  ssl: { rejectUnauthorized: false }
 })
 
 // Create tables if they don't exist
 export async function initDB() {
+  // Test connection first
+  const client = await pool.connect()
+  console.log('DB connected successfully')
+  client.release()
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS shows (
       id            TEXT PRIMARY KEY,
@@ -55,7 +58,9 @@ export async function initDB() {
       updated_at   TIMESTAMPTZ DEFAULT NOW()
     );
   `)
-  console.log('✅ Database tables ready')
+  // Verify tables exist
+  const { rows } = await pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name")
+  console.log('✅ Database tables ready:', rows.map(r => r.table_name).join(', '))
 }
 
 // ── Shows ─────────────────────────────────────────────────────────────────────
