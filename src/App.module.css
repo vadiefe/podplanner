@@ -75,3 +75,25 @@
   margin: 0 auto;
   width: 100%;
 }
+
+.dbStatus {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 0 1rem;
+  white-space: nowrap;
+}
+.dbOk { color: var(--green); display: flex; align-items: center; gap: 5px; }
+.dbError { color: var(--red); display: flex; align-items: center; gap: 5px; cursor: help; }
+.dbLoading { color: var(--text-3); display: flex; align-items: center; gap: 5px; }
+
+.errorBanner {
+  background: var(--amber-bg);
+  color: var(--amber);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 1rem;
+}

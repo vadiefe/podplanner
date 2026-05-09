@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import * as XLSX from 'xlsx'
 import Papa from 'papaparse'
 import { Card, SectionTitle, Btn, FormGroup, Select, Tag, Empty } from '../components/UI.jsx'
+import { api } from '../App.jsx'
 import s from './RateCardPage.module.css'
 
 const IMPORT_FIELDS = {
@@ -138,7 +139,7 @@ function ShowDrawer({ show, onSave, onCancel }) {
   )
 }
 
-export default function RateCardPage({ podcasts, setPodcasts, onNext }) {
+export default function RateCardPage({ podcasts, setPodcasts, dbReady, onNext }) {
   const [dragging, setDragging] = useState(false)
   const [status, setStatus] = useState(null)
   const [mapping, setMapping] = useState(null)
@@ -228,11 +229,16 @@ export default function RateCardPage({ podcasts, setPodcasts, onNext }) {
   function openAdd() { setEditShow({ show: { ...EMPTY_POD, id: Date.now() }, idx: -1 }) }
   function openEdit(i) { setEditShow({ show: { ...podcasts[i] }, idx: i }) }
   function handleSave(saved) {
-    if (editShow.idx === -1) setPodcasts(prev => [...prev, { ...saved, id: Date.now() }])
-    else setPodcasts(prev => prev.map((p, i) => i === editShow.idx ? saved : p))
+    const finalSaved = { ...saved, id: saved.id || String(Date.now()) }
+    if (editShow.idx === -1) setPodcasts(prev => [...prev, finalSaved])
+    else setPodcasts(prev => prev.map((p, i) => i === editShow.idx ? finalSaved : p))
     setEditShow(null)
+    if (dbReady) api.saveShow(finalSaved).catch(err => console.error('Save failed:', err))
   }
-  function deletePod(id) { setPodcasts(p => p.filter(x => x.id !== id)) }
+  function deletePod(id) {
+    setPodcasts(p => p.filter(x => x.id !== id))
+    if (dbReady) api.deleteShow(id).catch(err => console.error('Delete failed:', err))
+  }
   const onDrop = useCallback(e => { e.preventDefault(); setDragging(false); handleFiles([...e.dataTransfer.files]) }, [])
 
   return (
@@ -301,7 +307,7 @@ export default function RateCardPage({ podcasts, setPodcasts, onNext }) {
             <SectionTitle style={{ margin: 0 }}>{podcasts.length} shows in library</SectionTitle>
             <div className={s.tableActions}>
               <Btn sm onClick={openAdd}><i className="ti ti-plus" />Add manually</Btn>
-              <Btn sm danger onClick={() => { if (confirm('Remove all shows?')) setPodcasts([]) }}>
+              <Btn sm danger onClick={() => { if (confirm('Remove all shows?')) { setPodcasts([]); if (dbReady) api.deleteAllShows().catch(console.error) } }}>
                 <i className="ti ti-trash" />Clear all
               </Btn>
             </div>

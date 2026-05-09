@@ -6,6 +6,11 @@ import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 import Anthropic from '@anthropic-ai/sdk'
+import {
+  initDB, getAllShows, upsertShow, upsertShows,
+  deleteShow, deleteAllShows, savePlan, getPlans, deletePlan,
+  getAllBriefs, upsertBrief, deleteBrief
+} from './db.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -25,11 +30,121 @@ const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } })
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-// ── Parse uploaded file ──────────────────────────────────────────────────────
+// ── DB: Shows ─────────────────────────────────────────────────────────────────
+
+// GET all shows
+app.get('/api/shows', async (req, res) => {
+  try {
+    const shows = await getAllShows()
+    res.json(shows)
+  } catch (err) {
+    console.error('GET /api/shows error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST upsert a single show
+app.post('/api/shows', async (req, res) => {
+  try {
+    const show = req.body
+    if (!show.id) return res.status(400).json({ error: 'Show must have an id' })
+    await upsertShow(show)
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('POST /api/shows error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST bulk upsert (after file import)
+app.post('/api/shows/bulk', async (req, res) => {
+  try {
+    const { shows } = req.body
+    if (!Array.isArray(shows)) return res.status(400).json({ error: 'Expected { shows: [] }' })
+    const count = await upsertShows(shows)
+    res.json({ ok: true, count })
+  } catch (err) {
+    console.error('POST /api/shows/bulk error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE a single show
+app.delete('/api/shows/:id', async (req, res) => {
+  try {
+    await deleteShow(req.params.id)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE all shows
+app.delete('/api/shows', async (req, res) => {
+  try {
+    await deleteAllShows()
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── DB: Plans ─────────────────────────────────────────────────────────────────
+
+app.get('/api/plans', async (req, res) => {
+  try {
+    const plans = await getPlans()
+    res.json(plans)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/plans', async (req, res) => {
+  try {
+    const { brief, plan } = req.body
+    const saved = await savePlan(brief, plan)
+    res.json(saved)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.delete('/api/plans/:id', async (req, res) => {
+  try {
+    await deletePlan(req.params.id)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── Briefs ───────────────────────────────────────────────────────────────────
+
+app.get('/api/briefs', async (req, res) => {
+  try { res.json(await getAllBriefs()) }
+  catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+app.post('/api/briefs', async (req, res) => {
+  try {
+    const brief = req.body
+    if (!brief.id) return res.status(400).json({ error: 'Brief must have an id' })
+    await upsertBrief(brief)
+    res.json({ ok: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/briefs/:id', async (req, res) => {
+  try { await deleteBrief(req.params.id); res.json({ ok: true }) }
+  catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// ── File parsing ──────────────────────────────────────────────────────────────
+
 app.post('/api/parse-file', upload.single('file'), async (req, res) => {
   const file = req.file
   if (!file) return res.status(400).json({ error: 'No file uploaded' })
-
   const ext = path.extname(file.originalname).toLowerCase()
 
   try {
@@ -37,7 +152,6 @@ app.post('/api/parse-file', upload.single('file'), async (req, res) => {
 
     if (ext === '.csv') {
       const text = fs.readFileSync(file.path, 'utf8')
-      // Simple CSV parse (PapaParse on client is better but we handle server-side too)
       const lines = text.split('\n').filter(Boolean)
       if (lines.length < 2) throw new Error('CSV appears empty')
       const headers = parseCSVLine(lines[0])
@@ -47,16 +161,17 @@ app.post('/api/parse-file', upload.single('file'), async (req, res) => {
         headers.forEach((h, i) => { obj[h.trim()] = (vals[i] || '').trim() })
         return obj
       }).filter(r => Object.values(r).some(v => v))
+      fs.unlinkSync(file.path)
+      const headers2 = rows.length ? Object.keys(rows[0]) : []
+      return res.json({ type: 'csv', rows, headers: headers2, filename: file.originalname })
 
     } else if (ext === '.xlsx' || ext === '.xls') {
-      // We'll return raw binary for client-side XLSX parsing
       const buffer = fs.readFileSync(file.path)
       const base64 = buffer.toString('base64')
       fs.unlinkSync(file.path)
       return res.json({ type: 'xlsx', base64, filename: file.originalname })
 
     } else if (ext === '.pdf') {
-      // Use Anthropic vision to extract table data from PDF
       const buffer = fs.readFileSync(file.path)
       const base64 = buffer.toString('base64')
 
@@ -66,16 +181,13 @@ app.post('/api/parse-file', upload.single('file'), async (req, res) => {
         messages: [{
           role: 'user',
           content: [
-            {
-              type: 'document',
-              source: { type: 'base64', media_type: 'application/pdf', data: base64 }
-            },
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
             {
               type: 'text',
               text: `Extract ALL podcast/show data from this rate card document.
 Return ONLY a JSON array of objects. Each object must have these fields (use null if not found):
 - name: show/podcast name
-- listeners: monthly listeners or downloads (number only, no commas/symbols)
+- listeners: monthly listeners or downloads (number only)
 - listeners_per_ep: listeners per episode (number only)
 - cpm: CPM rate in USD (number only)
 - category: genre/topic/vertical
@@ -86,8 +198,6 @@ Return ONLY a JSON array of objects. Each object must have these fields (use nul
 - url: show website or link
 - description: any other important info
 
-Example: [{"name":"The Daily","listeners":3000000,"listeners_per_ep":500000,"cpm":35,"category":"News","release_frequency":"Daily","sponsorship_types":"60s host read","host_location":"New York, USA","demographics":"55% female, 25-44","url":"https://nytimes.com/thedaily","description":"NYT flagship news podcast"}]
-
 Return ONLY the JSON array, no markdown, no explanation.`
             }
           ]
@@ -96,21 +206,23 @@ Return ONLY the JSON array, no markdown, no explanation.`
 
       const txt = response.content[0].text.replace(/```json|```/g, '').trim()
       const parsed = JSON.parse(txt)
-      rows = parsed.map(r => ({
+      const enriched = parsed.map(r => ({
         name: r.name || '',
         listeners: r.listeners || '',
+        listeners_per_ep: r.listeners_per_ep || '',
         cpm: r.cpm || '',
         category: r.category || '',
+        release_frequency: r.release_frequency || '',
+        sponsorship_types: r.sponsorship_types || '',
+        host_location: r.host_location || '',
+        demographics: r.demographics || '',
+        url: r.url || '',
         description: r.description || ''
       }))
 
       fs.unlinkSync(file.path)
-      return res.json({ type: 'pdf_extracted', rows, headers: ['name','listeners','cpm','category','description'] })
+      return res.json({ type: 'pdf_extracted', rows: enriched, filename: file.originalname })
     }
-
-    fs.unlinkSync(file.path)
-    const headers = rows.length ? Object.keys(rows[0]) : []
-    res.json({ type: 'csv', rows, headers, filename: file.originalname })
 
   } catch (err) {
     if (fs.existsSync(file.path)) fs.unlinkSync(file.path)
@@ -121,8 +233,7 @@ Return ONLY the JSON array, no markdown, no explanation.`
 
 function parseCSVLine(line) {
   const result = []
-  let current = ''
-  let inQuotes = false
+  let current = '', inQuotes = false
   for (let i = 0; i < line.length; i++) {
     if (line[i] === '"') { inQuotes = !inQuotes }
     else if (line[i] === ',' && !inQuotes) { result.push(current); current = '' }
@@ -132,14 +243,15 @@ function parseCSVLine(line) {
   return result
 }
 
-// ── Generate media plan ──────────────────────────────────────────────────────
+// ── Generate media plan ───────────────────────────────────────────────────────
+
 app.post('/api/generate-plan', async (req, res) => {
   const { podcasts, brief } = req.body
   if (!podcasts?.length) return res.status(400).json({ error: 'No podcasts provided' })
   if (!brief?.brandName) return res.status(400).json({ error: 'No brief provided' })
 
   const podcastList = podcasts.slice(0, 100).map((p, i) =>
-    `${i + 1}. "${p.name}" | category: ${p.category || 'unknown'} | monthly_listeners: ${p.listeners || 'unknown'} | CPM: $${p.cpm || 'unknown'} | desc: ${p.description || 'n/a'}`
+    `${i + 1}. "${p.name}" | network: ${p.adNetwork || 'independent'} | category: ${p.category || 'unknown'} | ep_listeners: ${p.listenersPerEp || 'unknown'} | monthly_listeners: ${p.listenersMonthly || 'unknown'} | frequency: ${p.releaseFrequency || 'unknown'} | CPM: $${p.cpm || 'unknown'} | formats: ${p.sponsorshipTypes || 'unknown'} | location: ${p.hostLocation || 'unknown'} | demographics: ${p.demographics || 'unknown'} | desc: ${p.description || 'n/a'}`
   ).join('\n')
 
   const prompt = `You are a senior podcast media planner at a top agency. Create the optimal podcast media plan for this brand.
@@ -160,18 +272,18 @@ AVAILABLE SHOWS (${podcasts.length} total):
 ${podcastList}
 
 INSTRUCTIONS:
-1. Select 5–12 shows that best match the brand's audience and category alignment
+1. Select 5–12 shows that best match the brand's audience, demographics, and category
 2. Allocate budget across shows (total must be close to $${brief.budget})
-3. Recommend ad format based on show type and campaign goal
-4. For each show: calculate based on allocated budget and CPM
+3. Recommend the best ad format from each show's available sponsorship types
+4. Consider audience demographics and release frequency in your selection
 
 Respond ONLY with valid JSON — no markdown fences, no preamble:
 {
-  "rationale": "2–3 sentence strategy explanation covering targeting approach and mix rationale",
+  "rationale": "2–3 sentence strategy explanation",
   "selections": [
     {
       "podcastName": "exact name from list",
-      "reason": "one sentence on audience/category fit",
+      "reason": "one sentence on audience/demographic fit",
       "allocatedBudget": 8000,
       "spotsPerWeek": 2,
       "adFormat": "host-read 60s mid-roll"
@@ -189,7 +301,6 @@ Respond ONLY with valid JSON — no markdown fences, no preamble:
     const txt = response.content[0].text.replace(/```json|```/g, '').trim()
     const parsed = JSON.parse(txt)
 
-    // Enrich with CPM / impression data from our library
     const enriched = parsed.selections.map(s => {
       const pod = podcasts.find(p =>
         p.name === s.podcastName ||
@@ -201,9 +312,13 @@ Respond ONLY with valid JSON — no markdown fences, no preamble:
       return {
         ...s,
         cpm,
-        listeners: pod?.listeners || 0,
+        listenersPerEp: pod?.listenersPerEp || 0,
+        listenersMonthly: pod?.listenersMonthly || 0,
         impressions,
+        adNetwork: pod?.adNetwork || '',
         podcastCategory: pod?.category || '',
+        releaseFrequency: pod?.releaseFrequency || '',
+        demographics: pod?.demographics || '',
         id: pod?.id || Math.random().toString(36).slice(2)
       }
     })
@@ -215,7 +330,8 @@ Respond ONLY with valid JSON — no markdown fences, no preamble:
   }
 })
 
-// Serve built frontend in production
+// ── Serve frontend ────────────────────────────────────────────────────────────
+
 const distDir = path.resolve(__dirname, '..', 'dist')
 console.log('Static dir:', distDir, '| exists:', fs.existsSync(distDir))
 app.use(express.static(distDir))
@@ -228,4 +344,18 @@ app.get('*', (req, res) => {
   }
 })
 
-app.listen(PORT, () => console.log(`\n🎙  Podcast Planner API running on http://localhost:${PORT}\n`))
+// ── Start ─────────────────────────────────────────────────────────────────────
+
+async function start() {
+  if (process.env.DATABASE_URL) {
+    await initDB()
+  } else {
+    console.warn('⚠️  No DATABASE_URL — running without database persistence')
+  }
+  app.listen(PORT, () => console.log(`\n🎙  Podcast Planner running on http://localhost:${PORT}\n`))
+}
+
+start().catch(err => {
+  console.error('Failed to start:', err)
+  process.exit(1)
+})
