@@ -72,15 +72,21 @@ app.post('/api/parse-file', upload.single('file'), async (req, res) => {
             },
             {
               type: 'text',
-              text: `Extract ALL podcast/show data from this rate card document. 
+              text: `Extract ALL podcast/show data from this rate card document.
 Return ONLY a JSON array of objects. Each object must have these fields (use null if not found):
 - name: show/podcast name
-- listeners: monthly listeners or downloads (number only, no commas)
+- listeners: monthly listeners or downloads (number only, no commas/symbols)
+- listeners_per_ep: listeners per episode (number only)
 - cpm: CPM rate in USD (number only)
 - category: genre/topic/vertical
-- description: brief description
+- release_frequency: how often episodes release (e.g. Weekly, Daily)
+- sponsorship_types: ad formats available (e.g. 30s pre-roll, 60s host read)
+- host_location: city/country of host
+- demographics: audience demographics (gender, age, interests)
+- url: show website or link
+- description: any other important info
 
-Example: [{"name":"The Daily","listeners":3000000,"cpm":35,"category":"News","description":"NYT daily news podcast"}]
+Example: [{"name":"The Daily","listeners":3000000,"listeners_per_ep":500000,"cpm":35,"category":"News","release_frequency":"Daily","sponsorship_types":"60s host read","host_location":"New York, USA","demographics":"55% female, 25-44","url":"https://nytimes.com/thedaily","description":"NYT flagship news podcast"}]
 
 Return ONLY the JSON array, no markdown, no explanation.`
             }

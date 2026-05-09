@@ -150,16 +150,20 @@ export default function PlanPage({ podcasts, brief, plan, setPlan, onNext, onBac
           <table className={s.table}>
             <thead>
               <tr>
-                <th>Show</th><th>Category</th><th>Listeners</th><th>CPM</th>
-                <th>Format</th><th>Spots/wk</th><th>Budget ($)</th><th>Impressions</th><th>Why selected</th><th />
+                <th>Show</th><th>Network</th><th>Category</th><th>Ep. listeners</th><th>Mo. listeners</th>
+                <th>Demographics</th><th>CPM</th><th>Format</th><th>Spots/wk</th>
+                <th>Budget ($)</th><th>Impressions</th><th>Why selected</th><th />
               </tr>
             </thead>
             <tbody>
               {plan.selections.map((row, i) => (
                 <tr key={i}>
                   <td className={s.bold}>{row.podcastName}</td>
+                  <td>{row.adNetwork ? <Tag color="amber">{row.adNetwork}</Tag> : <span style={{color:'var(--text-3)'}}>Indie</span>}</td>
                   <td>{row.podcastCategory ? <Tag color="blue">{row.podcastCategory}</Tag> : '—'}</td>
-                  <td>{row.listeners ? row.listeners.toLocaleString() : '—'}</td>
+                  <td>{row.listenersPerEp ? row.listenersPerEp.toLocaleString() : '—'}</td>
+                  <td>{row.listenersMonthly ? row.listenersMonthly.toLocaleString() : '—'}</td>
+                  <td style={{fontSize:11,color:'var(--text-2)',maxWidth:140}}>{row.demographics || '—'}</td>
                   <td>{row.cpm ? `$${row.cpm.toFixed(2)}` : '—'}</td>
                   <td><Tag color="green">{row.adFormat}</Tag></td>
                   <td className={s.center}>{row.spotsPerWeek}</td>

@@ -18,10 +18,11 @@ export default function ExportPage({ plan, brief, onBack }) {
   const effCPM = totalImp > 0 ? (totalAlloc / (totalImp / 1000)) : 0
 
   function exportCSV() {
-    const headers = ['Show', 'Category', 'Monthly Listeners', 'CPM ($)', 'Ad Format', 'Spots/Week', 'Allocated Budget ($)', 'Est. Impressions', 'Why Selected']
+    const headers = ['Show', 'Ad Network', 'Category', 'Demographics', 'Ep. Listeners', 'Mo. Listeners', 'CPM ($)', 'Ad Format', 'Spots/Week', 'Allocated Budget ($)', 'Est. Impressions', 'Why Selected']
     const rows = plan.selections.map(s => [
-      s.podcastName, s.podcastCategory || '', s.listeners || '', s.cpm || '',
-      s.adFormat, s.spotsPerWeek, s.allocatedBudget, s.impressions, s.reason
+      s.podcastName, s.adNetwork || 'Independent', s.podcastCategory || '',
+      s.demographics || '', s.listenersPerEp || '', s.listenersMonthly || '',
+      s.cpm || '', s.adFormat, s.spotsPerWeek, s.allocatedBudget, s.impressions, s.reason
     ])
     const totals = ['TOTAL', '', '', '', '', '',
       plan.selections.reduce((a, s) => a + s.allocatedBudget, 0),
