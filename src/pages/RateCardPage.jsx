@@ -17,14 +17,14 @@ const IMPORT_FIELDS = {
   hostLocation:    'Host location',
   demographics:    'Demographics',
   url:             'Show URL',
-  description:     'Description / other',
+  showBio:         'Show bio / description',
 }
 
 const EMPTY_POD = {
   id: null, name: '', adNetwork: '', category: '',
   listenersPerEp: 0, listenersMonthly: 0, releaseFrequency: '',
   cpm: 0, sponsorshipTypes: '', hostLocation: '',
-  demographics: '', url: '', description: '',
+  demographics: '', url: '', showBio: '', additionalNotes: '',
 }
 
 function guessMapping(headers) {
@@ -42,7 +42,7 @@ function guessMapping(headers) {
     hostLocation:     find('location', 'host location', 'city', 'country'),
     demographics:     find('demo', 'gender', 'age', 'audience profile'),
     url:              find('url', 'link', 'website', 'http'),
-    description:      find('desc', 'about', 'summary', 'overview', 'notes', 'other'),
+    showBio:          find('bio', 'desc', 'about', 'summary', 'overview', 'what is'),
   }
 }
 
@@ -51,6 +51,7 @@ function parseNum(v) {
   return parseFloat(String(v).replace(/[^0-9.]/g, '')) || 0
 }
 
+// Slide-out drawer editor
 function ShowDrawer({ show, onSave, onCancel }) {
   const [row, setRow] = useState({ ...show })
   const upd = (k, v) => setRow(r => ({ ...r, [k]: v }))
@@ -62,6 +63,7 @@ function ShowDrawer({ show, onSave, onCancel }) {
           <button className={s.drawerClose} onClick={onCancel}><i className="ti ti-x" /></button>
         </div>
         <div className={s.drawerBody}>
+
           <div className={s.drawerSection}>
             <p className={s.drawerSectionLabel}>Basic info</p>
             <FormGroup label="Show name *">
@@ -77,6 +79,11 @@ function ShowDrawer({ show, onSave, onCancel }) {
             </div>
             <FormGroup label="Show URL">
               <input className={s.drawerInput} type="url" value={row.url} onChange={e => upd('url', e.target.value)} placeholder="https://…" />
+            </FormGroup>
+            <FormGroup label="Show bio">
+              <textarea className={s.drawerTextarea} rows={3} value={row.showBio}
+                onChange={e => upd('showBio', e.target.value)}
+                placeholder="What is this show about? Who are the hosts? What topics does it cover?" />
             </FormGroup>
           </div>
 
@@ -120,17 +127,22 @@ function ShowDrawer({ show, onSave, onCancel }) {
           </div>
 
           <div className={s.drawerSection}>
-            <p className={s.drawerSectionLabel}>Additional notes</p>
-            <FormGroup label="Other important info (anything that doesn't fit above)">
-              <textarea className={s.drawerTextarea} rows={3} value={row.description}
-                onChange={e => upd('description', e.target.value)}
-                placeholder="e.g. Strong community engagement, waitlist for Q3, exclusive categories, past brand partnerships…" />
+            <p className={s.drawerSectionLabel}>Additional notes <span className={s.aiLabel}>✦ AI-generated from file data</span></p>
+            <FormGroup label="Any other useful information about this show">
+              <textarea className={s.drawerTextarea} rows={4} value={row.additionalNotes}
+                onChange={e => upd('additionalNotes', e.target.value)}
+                placeholder="AI will populate this automatically from unmapped columns in your file. You can also edit it manually." />
             </FormGroup>
           </div>
         </div>
         <div className={s.drawerFooter}>
           <Btn onClick={onCancel}>Cancel</Btn>
-          <Btn primary onClick={() => onSave({ ...row, listenersPerEp: parseNum(row.listenersPerEp), listenersMonthly: parseNum(row.listenersMonthly), cpm: parseNum(row.cpm) })}>
+          <Btn primary onClick={() => onSave({
+            ...row,
+            listenersPerEp: parseNum(row.listenersPerEp),
+            listenersMonthly: parseNum(row.listenersMonthly),
+            cpm: parseNum(row.cpm)
+          })}>
             <i className="ti ti-check" /> Save show
           </Btn>
         </div>
@@ -201,32 +213,68 @@ export default function RateCardPage({ podcasts, setPodcasts, dbReady, onNext })
     }
   }
 
-  function applyMapping() {
+  async function applyMapping() {
     const { rows, map, adNetwork, pdfPrefilled } = mapping
     const g = (r, key) => pdfPrefilled ? (r[key] || '') : (r[map[key]] || '')
-    const enriched = rows.map((r, i) => ({
-      ...EMPTY_POD,
-      id: Date.now() + i,
-      name:             g(r, 'name'),
-      adNetwork:        adNetwork || g(r, 'adNetwork'),
-      category:         g(r, 'category'),
-      listenersPerEp:   parseNum(pdfPrefilled ? r.listeners_per_ep : r[map.listenersPerEp]),
-      listenersMonthly: parseNum(pdfPrefilled ? r.listeners : r[map.listenersMonthly]),
-      releaseFrequency: g(r, 'releaseFrequency') || (pdfPrefilled ? r.release_frequency || '' : ''),
-      cpm:              parseNum(pdfPrefilled ? r.cpm : r[map.cpm]),
-      sponsorshipTypes: g(r, 'sponsorshipTypes') || (pdfPrefilled ? r.sponsorship_types || '' : ''),
-      hostLocation:     g(r, 'hostLocation') || (pdfPrefilled ? r.host_location || '' : ''),
-      demographics:     g(r, 'demographics'),
-      url:              g(r, 'url'),
-      description:      g(r, 'description'),
-    })).filter(p => p.name || p.cpm)
-    setPodcasts(prev => [...prev, ...enriched])
-    setStatus({ type: 'success', msg: `Imported ${enriched.length} shows from ${mapping.filename}${adNetwork ? ` · ${adNetwork}` : ''}` })
+
+    // Build mapped shows + keep full raw row for AI enrichment
+    const mapped = rows.map((r, i) => {
+      const show = {
+        ...EMPTY_POD,
+        id: String(Date.now() + i),
+        name:             g(r, 'name'),
+        adNetwork:        adNetwork || g(r, 'adNetwork'),
+        category:         g(r, 'category'),
+        listenersPerEp:   parseNum(pdfPrefilled ? r.listeners_per_ep : r[map.listenersPerEp]),
+        listenersMonthly: parseNum(pdfPrefilled ? r.listeners : r[map.listenersMonthly]),
+        releaseFrequency: pdfPrefilled ? (r.release_frequency || '') : (r[map.releaseFrequency] || ''),
+        cpm:              parseNum(pdfPrefilled ? r.cpm : r[map.cpm]),
+        sponsorshipTypes: pdfPrefilled ? (r.sponsorship_types || '') : (r[map.sponsorshipTypes] || ''),
+        hostLocation:     pdfPrefilled ? (r.host_location || '') : (r[map.hostLocation] || ''),
+        demographics:     g(r, 'demographics'),
+        url:              g(r, 'url'),
+        showBio:          pdfPrefilled ? (r.show_bio || '') : (r[map.showBio] || ''),
+        additionalNotes:  pdfPrefilled ? (r.additional_notes || '') : '',
+      }
+      return { show, rawRow: r }
+    }).filter(({ show }) => show.name || show.cpm)
+
+    // Add to UI immediately
+    const preliminary = mapped.map(m => m.show)
+    setPodcasts(prev => [...prev, ...preliminary])
     setMapping(null)
-    setTimeout(() => setStatus(null), 5000)
+    setStatus({ type: 'loading', msg: `✦ AI is reading all columns and generating show bios & notes for ${mapped.length} shows…` })
+
+    // Call AI enrichment
+    try {
+      const res = await fetch('/api/enrich-shows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shows: mapped })
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+
+      const enriched = data.shows
+      // Replace preliminary shows with enriched versions
+      setPodcasts(prev => {
+        const ids = new Set(preliminary.map(p => p.id))
+        const rest = prev.filter(p => !ids.has(p.id))
+        return [...rest, ...enriched]
+      })
+
+      // Save to DB
+      if (dbReady) await api.bulkSave(enriched)
+      setStatus({ type: 'success', msg: `Imported & enriched ${enriched.length} shows from ${mapping?.filename || 'file'}${adNetwork ? ` · ${adNetwork}` : ''}` })
+    } catch (e) {
+      // Fallback: save preliminary without AI notes
+      if (dbReady) await api.bulkSave(preliminary)
+      setStatus({ type: 'error', msg: `Imported ${preliminary.length} shows (AI enrichment failed: ${e.message})` })
+    }
+    setTimeout(() => setStatus(null), 6000)
   }
 
-  function openAdd() { setEditShow({ show: { ...EMPTY_POD, id: Date.now() }, idx: -1 }) }
+  function openAdd() { setEditShow({ show: { ...EMPTY_POD, id: String(Date.now()) }, idx: -1 }) }
   function openEdit(i) { setEditShow({ show: { ...podcasts[i] }, idx: i }) }
   function handleSave(saved) {
     const finalSaved = { ...saved, id: saved.id || String(Date.now()) }
@@ -256,7 +304,7 @@ export default function RateCardPage({ podcasts, setPodcasts, dbReady, onNext })
             style={{ display: 'none' }} onChange={e => handleFiles([...e.target.files])} />
           <i className="ti ti-upload" aria-hidden="true" />
           <p>Drop files here or click to upload</p>
-          <small>CSV, XLS, XLSX, PDF — upload multiple files from different ad networks</small>
+          <small>CSV, XLS, XLSX, PDF — AI will read all columns and auto-generate show bios & notes</small>
         </div>
         {status && (
           <div className={`${s.statusBanner} ${s[status.type]}`}>
@@ -271,7 +319,10 @@ export default function RateCardPage({ podcasts, setPodcasts, dbReady, onNext })
       {mapping && (
         <Card accent>
           <SectionTitle>Map columns — "{mapping.filename}" · {mapping.rows.length} rows</SectionTitle>
-          <p className={s.mappingHint}>Tag the ad network these shows belong to, then match column headers to planner fields.</p>
+          <p className={s.mappingHint}>
+            Tag the ad network, match your key columns below, then click Import. 
+            <strong> AI will automatically read all remaining columns</strong> to generate show bios and additional notes.
+          </p>
           <div className={s.networkInput}>
             <i className="ti ti-building" />
             <input
@@ -294,8 +345,12 @@ export default function RateCardPage({ podcasts, setPodcasts, dbReady, onNext })
               </FormGroup>
             ))}
           </div>
+          <div className={s.aiNote}>
+            <i className="ti ti-sparkles" />
+            All unmapped columns will be read by AI and summarised into "Additional notes" automatically.
+          </div>
           <div className={s.mappingActions}>
-            <Btn primary onClick={applyMapping}><i className="ti ti-check" /> Import {mapping.rows.length} rows</Btn>
+            <Btn primary onClick={applyMapping}><i className="ti ti-check" /> Import & enrich {mapping.rows.length} rows</Btn>
             <Btn onClick={() => setMapping(null)}>Cancel</Btn>
           </div>
         </Card>
@@ -317,8 +372,9 @@ export default function RateCardPage({ podcasts, setPodcasts, dbReady, onNext })
               <thead>
                 <tr>
                   <th>Show name</th><th>Network</th><th>Category</th>
-                  <th>Ep. listeners</th><th>Mo. listeners</th><th>Frequency</th>
-                  <th>CPM</th><th>Formats</th><th>Location</th><th>Demographics</th><th>Link</th><th />
+                  <th>Ep. listeners</th><th>Mo. listeners</th><th>Freq.</th>
+                  <th>CPM</th><th>Formats</th><th>Location</th>
+                  <th>Show bio</th><th>Notes</th><th>Link</th><th />
                 </tr>
               </thead>
               <tbody>
@@ -333,7 +389,12 @@ export default function RateCardPage({ podcasts, setPodcasts, dbReady, onNext })
                     <td>{p.cpm ? '$' + p.cpm.toFixed(2) : <span className={s.muted}>—</span>}</td>
                     <td className={s.descCell}>{p.sponsorshipTypes || <span className={s.muted}>—</span>}</td>
                     <td>{p.hostLocation || <span className={s.muted}>—</span>}</td>
-                    <td className={s.descCell}>{p.demographics || <span className={s.muted}>—</span>}</td>
+                    <td className={s.descCell}>{p.showBio || <span className={s.muted}>—</span>}</td>
+                    <td className={s.descCell}>
+                      {p.additionalNotes
+                        ? <span className={s.aiGenerated}><i className="ti ti-sparkles" />{p.additionalNotes}</span>
+                        : <span className={s.muted}>—</span>}
+                    </td>
                     <td>{p.url
                       ? <a href={p.url} target="_blank" rel="noopener noreferrer" className={s.urlLink}><i className="ti ti-external-link" /></a>
                       : <span className={s.muted}>—</span>}
@@ -355,7 +416,7 @@ export default function RateCardPage({ podcasts, setPodcasts, dbReady, onNext })
         </Card>
       ) : (
         <Card>
-          <Empty icon="ti-microphone" title="No shows loaded yet" sub="Upload your rate card files above, or add shows manually.">
+          <Empty icon="ti-microphone" title="No shows loaded yet" sub="Upload your rate card files above — AI will read every column automatically.">
             <div style={{ marginTop: 14 }}>
               <Btn sm onClick={openAdd}><i className="ti ti-plus" />Add a show manually</Btn>
             </div>

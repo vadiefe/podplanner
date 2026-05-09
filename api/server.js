@@ -119,6 +119,76 @@ app.delete('/api/plans/:id', async (req, res) => {
   }
 })
 
+// ── AI: Enrich shows with additional_notes ───────────────────────────────────
+// Takes an array of {show (mapped fields), rawRow (full original row)} pairs
+// Returns shows with showBio and additionalNotes filled in by AI
+
+app.post('/api/enrich-shows', async (req, res) => {
+  const { shows } = req.body
+  if (!Array.isArray(shows) || !shows.length) return res.status(400).json({ error: 'No shows provided' })
+
+  try {
+    // Build a compact representation of each show with its raw unmapped data
+    const showsForAI = shows.map((s, i) => ({
+      index: i,
+      mappedFields: {
+        name: s.show.name,
+        adNetwork: s.show.adNetwork,
+        category: s.show.category,
+        listenersPerEp: s.show.listenersPerEp,
+        listenersMonthly: s.show.listenersMonthly,
+        releaseFrequency: s.show.releaseFrequency,
+        cpm: s.show.cpm,
+        sponsorshipTypes: s.show.sponsorshipTypes,
+        hostLocation: s.show.hostLocation,
+        demographics: s.show.demographics,
+        url: s.show.url,
+      },
+      // All original columns from the file row — may contain info not mapped above
+      rawRow: s.rawRow
+    }))
+
+    const prompt = `You are analyzing podcast show data imported from a rate card file.
+For each show below, do TWO things:
+1. Write a "showBio" — a clear 1-3 sentence description of what the show is about, based on any available info (name, category, description columns, etc.)
+2. Write "additionalNotes" — a concise summary of ANY useful information in the rawRow that is NOT already captured in the mappedFields. Include things like: editorial guidelines, booking contacts, audience insights, seasonal availability, special packages, past advertisers, social stats, awards, host background, unique selling points, etc. If nothing extra exists, write an empty string.
+
+Shows to analyze:
+${JSON.stringify(showsForAI, null, 2)}
+
+Respond ONLY with a JSON array in this exact format, one entry per show, preserving index order:
+[
+  { "index": 0, "showBio": "...", "additionalNotes": "..." },
+  { "index": 1, "showBio": "...", "additionalNotes": "..." }
+]
+No markdown, no explanation.`
+
+    const response = await anthropic.messages.create({
+      model: 'claude-opus-4-20250514',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    const txt = response.content[0].text.replace(/\`\`\`json|\`\`\`/g, '').trim()
+    const enriched = JSON.parse(txt)
+
+    // Merge AI output back into shows
+    const result = shows.map((s, i) => {
+      const match = enriched.find(e => e.index === i) || {}
+      return {
+        ...s.show,
+        showBio: match.showBio || '',
+        additionalNotes: match.additionalNotes || ''
+      }
+    })
+
+    res.json({ shows: result })
+  } catch (err) {
+    console.error('Enrich error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ── Briefs ───────────────────────────────────────────────────────────────────
 
 app.get('/api/briefs', async (req, res) => {
@@ -196,7 +266,8 @@ Return ONLY a JSON array of objects. Each object must have these fields (use nul
 - host_location: city/country of host
 - demographics: audience demographics (gender, age, interests)
 - url: show website or link
-- description: any other important info
+- show_bio: 1-3 sentence description of what the show is about
+- additional_notes: any other useful info not captured above (editorial guidelines, social stats, booking info, special packages, etc.)
 
 Return ONLY the JSON array, no markdown, no explanation.`
             }
@@ -217,7 +288,8 @@ Return ONLY the JSON array, no markdown, no explanation.`
         host_location: r.host_location || '',
         demographics: r.demographics || '',
         url: r.url || '',
-        description: r.description || ''
+        show_bio: r.show_bio || '',
+        additional_notes: r.additional_notes || ''
       }))
 
       fs.unlinkSync(file.path)
@@ -251,7 +323,7 @@ app.post('/api/generate-plan', async (req, res) => {
   if (!brief?.brandName) return res.status(400).json({ error: 'No brief provided' })
 
   const podcastList = podcasts.slice(0, 100).map((p, i) =>
-    `${i + 1}. "${p.name}" | network: ${p.adNetwork || 'independent'} | category: ${p.category || 'unknown'} | ep_listeners: ${p.listenersPerEp || 'unknown'} | monthly_listeners: ${p.listenersMonthly || 'unknown'} | frequency: ${p.releaseFrequency || 'unknown'} | CPM: $${p.cpm || 'unknown'} | formats: ${p.sponsorshipTypes || 'unknown'} | location: ${p.hostLocation || 'unknown'} | demographics: ${p.demographics || 'unknown'} | desc: ${p.description || 'n/a'}`
+    `${i + 1}. "${p.name}" | network: ${p.adNetwork || 'independent'} | category: ${p.category || 'unknown'} | ep_listeners: ${p.listenersPerEp || 'unknown'} | monthly_listeners: ${p.listenersMonthly || 'unknown'} | frequency: ${p.releaseFrequency || 'unknown'} | CPM: $${p.cpm || 'unknown'} | formats: ${p.sponsorshipTypes || 'unknown'} | location: ${p.hostLocation || 'unknown'} | demographics: ${p.demographics || 'unknown'} | bio: ${p.showBio || 'n/a'} | notes: ${p.additionalNotes || ''}`
   ).join('\n')
 
   const prompt = `You are a senior podcast media planner at a top agency. Create the optimal podcast media plan for this brand.

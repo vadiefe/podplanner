@@ -29,10 +29,17 @@ export async function initDB() {
       host_location TEXT DEFAULT '',
       demographics  TEXT DEFAULT '',
       url           TEXT DEFAULT '',
-      description   TEXT DEFAULT '',
+      show_bio      TEXT DEFAULT '',
+      additional_notes TEXT DEFAULT '',
       created_at    TIMESTAMPTZ DEFAULT NOW(),
       updated_at    TIMESTAMPTZ DEFAULT NOW()
     );
+
+    -- Migrate existing tables (safe to run multiple times)
+    ALTER TABLE shows ADD COLUMN IF NOT EXISTS show_bio TEXT DEFAULT '';
+    ALTER TABLE shows ADD COLUMN IF NOT EXISTS additional_notes TEXT DEFAULT '';
+    -- Rename old description to additional_notes if description column still exists with data
+    -- (show_bio is the new dedicated field, additional_notes is AI-generated)
 
     CREATE TABLE IF NOT EXISTS plans (
       id          SERIAL PRIMARY KEY,
@@ -79,7 +86,8 @@ export async function getAllShows() {
       host_location     AS "hostLocation",
       demographics,
       url,
-      description,
+      show_bio          AS "showBio",
+      additional_notes  AS "additionalNotes",
       created_at        AS "createdAt"
     FROM shows
     ORDER BY created_at ASC
@@ -93,8 +101,8 @@ export async function upsertShow(show) {
       id, name, ad_network, category,
       listeners_per_ep, listeners_monthly, release_frequency,
       cpm, sponsorship_types, host_location,
-      demographics, url, description, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+      demographics, url, show_bio, additional_notes, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
     ON CONFLICT (id) DO UPDATE SET
       name              = EXCLUDED.name,
       ad_network        = EXCLUDED.ad_network,
@@ -107,7 +115,8 @@ export async function upsertShow(show) {
       host_location     = EXCLUDED.host_location,
       demographics      = EXCLUDED.demographics,
       url               = EXCLUDED.url,
-      description       = EXCLUDED.description,
+      show_bio          = EXCLUDED.show_bio,
+      additional_notes  = EXCLUDED.additional_notes,
       updated_at        = NOW()
     RETURNING id
   `, [
@@ -123,7 +132,8 @@ export async function upsertShow(show) {
     show.hostLocation || '',
     show.demographics || '',
     show.url || '',
-    show.description || ''
+    show.showBio || '',
+    show.additionalNotes || ''
   ])
   return rows[0]
 }

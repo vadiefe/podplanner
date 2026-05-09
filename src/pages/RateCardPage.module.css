@@ -220,3 +220,33 @@
   flex-shrink: 0;
   background: var(--surface);
 }
+
+.aiNote {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--blue);
+  background: var(--blue-bg);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+
+.aiGenerated {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--blue);
+}
+.aiGenerated .ti { font-size: 10px; margin-top: 1px; flex-shrink: 0; }
+
+.aiLabel {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--blue);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 6px;
+}
