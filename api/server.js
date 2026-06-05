@@ -30,6 +30,26 @@ const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } })
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+// Retry wrapper — handles 529 overload and 529-like transient errors
+async function anthropicWithRetry(params, maxRetries = 4) {
+  let lastErr
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await anthropic.messages.create(params)
+    } catch (err) {
+      lastErr = err
+      const status = err.status || err.statusCode || 0
+      const isRetryable = status === 529 || status === 529 || status === 503 ||
+        (err.message && (err.message.includes('overloaded') || err.message.includes('overload')))
+      if (!isRetryable) throw err
+      const delay = (attempt + 1) * 8000 // 8s, 16s, 24s, 32s
+      console.log(`Anthropic overloaded (attempt ${attempt + 1}), retrying in ${delay/1000}s…`)
+      await new Promise(r => setTimeout(r, delay))
+    }
+  }
+  throw lastErr
+}
+
 // ── DB: Shows ─────────────────────────────────────────────────────────────────
 
 // GET all shows
@@ -171,7 +191,7 @@ Return ONLY a JSON array, one object per show:
 
 Rules: listenersPerEp/listenersMonthly = integers, cpm = number, all others = strings, never invent data, no markdown.`
 
-      const response = await anthropic.messages.create({
+      const response = await anthropicWithRetry({
         model: 'claude-opus-4-5',
         max_tokens: 3000,
         messages: [{ role: 'user', content: prompt }]
@@ -266,7 +286,7 @@ app.post('/api/parse-file', upload.single('file'), async (req, res) => {
       const buffer = fs.readFileSync(file.path)
       const base64 = buffer.toString('base64')
 
-      const response = await anthropic.messages.create({
+      const response = await anthropicWithRetry({
         model: 'claude-opus-4-5',
         max_tokens: 4000,
         messages: [{
@@ -343,7 +363,31 @@ app.post('/api/generate-plan', async (req, res) => {
   if (!podcasts?.length) return res.status(400).json({ error: 'No podcasts provided' })
   if (!brief?.brandName) return res.status(400).json({ error: 'No brief provided' })
 
-  const podcastList = podcasts.slice(0, 100).map((p, i) =>
+  // Smart pre-filter: score shows for relevance, take top 80
+  const briefText = [brief.brandName, brief.brandDesc, brief.category, brief.targetAudience, brief.campaignGoal, brief.notes].join(' ').toLowerCase()
+  const briefWords = briefText.split(/\W+/).filter(w => w.length > 3)
+
+  function scoreShow(p) {
+    let score = 0
+    const showText = [p.name, p.category, p.demographics, p.showBio, p.additionalNotes].join(' ').toLowerCase()
+    briefWords.forEach(w => { if (showText.includes(w)) score += 2 })
+    if (p.cpm > 0) score += 3
+    if (p.listenersPerEp > 0 || p.listenersMonthly > 0) score += 2
+    if (p.demographics) score += 2
+    if (p.showBio) score += 1
+    if (p.additionalNotes) score += 1
+    return score
+  }
+
+  const candidates = podcasts
+    .map(p => ({ p, score: scoreShow(p) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 80)
+    .map(x => x.p)
+
+  console.log('Plan generation:', podcasts.length, 'shows filtered to', candidates.length, 'candidates')
+
+  const podcastList = candidates.map((p, i) =>
     `${i + 1}. "${p.name}" | network: ${p.adNetwork || 'independent'} | category: ${p.category || 'unknown'} | ep_listeners: ${p.listenersPerEp || 'unknown'} | monthly_listeners: ${p.listenersMonthly || 'unknown'} | frequency: ${p.releaseFrequency || 'unknown'} | CPM: $${p.cpm || 'unknown'} | formats: ${p.sponsorshipTypes || 'unknown'} | location: ${p.hostLocation || 'unknown'} | demographics: ${p.demographics || 'unknown'} | bio: ${p.showBio || 'n/a'} | notes: ${p.additionalNotes || ''}`
   ).join('\n')
 
@@ -361,7 +405,7 @@ BRAND BRIEF:
 - Flight: ${brief.flightWeeks} weeks
 - Notes/constraints: ${brief.notes || 'none'}
 
-AVAILABLE SHOWS (${podcasts.length} total):
+AVAILABLE SHOWS (${candidates.length} pre-filtered from ${podcasts.length} total):
 ${podcastList}
 
 INSTRUCTIONS:
@@ -385,38 +429,11 @@ Respond ONLY with valid JSON — no markdown fences, no preamble:
 }`
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await anthropicWithRetry({
       model: 'claude-opus-4-5',
       max_tokens: 3000,
       messages: [{ role: 'user', content: prompt }]
     })
-
-    const txt = response.content[0].text.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(txt)
-
-    const enriched = parsed.selections.map(s => {
-      const pod = podcasts.find(p =>
-        p.name === s.podcastName ||
-        p.name?.toLowerCase().includes(s.podcastName?.toLowerCase()) ||
-        s.podcastName?.toLowerCase().includes(p.name?.toLowerCase())
-      )
-      const cpm = pod?.cpm || 25
-      const impressions = Math.round((s.allocatedBudget / cpm) * 1000)
-      return {
-        ...s,
-        cpm,
-        listenersPerEp: pod?.listenersPerEp || 0,
-        listenersMonthly: pod?.listenersMonthly || 0,
-        impressions,
-        adNetwork: pod?.adNetwork || '',
-        podcastCategory: pod?.category || '',
-        releaseFrequency: pod?.releaseFrequency || '',
-        demographics: pod?.demographics || '',
-        id: pod?.id || Math.random().toString(36).slice(2)
-      }
-    })
-
-    res.json({ rationale: parsed.rationale, selections: enriched })
   } catch (err) {
     console.error('Plan generation error:', err)
     res.status(500).json({ error: err.message })
