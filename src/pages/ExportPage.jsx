@@ -71,7 +71,7 @@ export default function ExportPage({ plan, brief, onBack }) {
   h1 { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
   .meta { font-size: 13px; color: #777; margin-bottom: 36px; }
   h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #999; margin: 28px 0 12px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
-  .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 4px; }
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
   .metric { background: #f7f5f0; border-radius: 8px; padding: 14px 16px; }
   .metric-label { font-size: 11px; color: #888; margin-bottom: 4px; }
   .metric-val { font-size: 22px; font-weight: 700; }
@@ -87,7 +87,7 @@ export default function ExportPage({ plan, brief, onBack }) {
 <p class="meta">${brief.brandName} · ${brief.category || 'Brand'} · ${brief.flightWeeks} weeks · Generated ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
 
 <div class="metrics">
-  <div class="metric"><div class="metric-label">Total plan cost</div><div class="metric-val">${Math.round(totalAlloc).toLocaleString()}</div></div>
+  <div class="metric"><div class="metric-label">Total plan cost</div><div class="metric-val">$${Math.round(totalAlloc).toLocaleString()}</div></div>
   <div class="metric"><div class="metric-label">Est. impressions</div><div class="metric-val">${(totalImp / 1000).toFixed(0)}k</div></div>
   <div class="metric"><div class="metric-label">Shows selected</div><div class="metric-val">${plan.selections.length}</div></div>
   <div class="metric"><div class="metric-label">Eff. CPM</div><div class="metric-val">${effCPM.toFixed(2)}</div></div>
