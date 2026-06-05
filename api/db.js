@@ -61,9 +61,12 @@ export async function initDB() {
       flight_weeks TEXT DEFAULT '4',
       campaign_goal TEXT DEFAULT 'awareness',
       notes        TEXT DEFAULT '',
+      commission_rate TEXT DEFAULT '0',
       created_at   TIMESTAMPTZ DEFAULT NOW(),
       updated_at   TIMESTAMPTZ DEFAULT NOW()
     );
+
+    ALTER TABLE briefs ADD COLUMN IF NOT EXISTS commission_rate TEXT DEFAULT '0';
   `)
   // Verify tables exist
   const { rows } = await pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name")
@@ -192,6 +195,7 @@ export async function getAllBriefs() {
       flight_weeks AS "flightWeeks",
       campaign_goal AS "campaignGoal",
       notes,
+      commission_rate AS "commissionRate",
       created_at   AS "createdAt",
       updated_at   AS "updatedAt"
     FROM briefs
@@ -205,8 +209,8 @@ export async function upsertBrief(brief) {
     INSERT INTO briefs (
       id, brand_name, brand_desc, category,
       target_audience, age_range, gender,
-      budget, flight_weeks, campaign_goal, notes, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+      budget, flight_weeks, campaign_goal, notes, commission_rate, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
     ON CONFLICT (id) DO UPDATE SET
       brand_name      = EXCLUDED.brand_name,
       brand_desc      = EXCLUDED.brand_desc,
@@ -218,6 +222,7 @@ export async function upsertBrief(brief) {
       flight_weeks    = EXCLUDED.flight_weeks,
       campaign_goal   = EXCLUDED.campaign_goal,
       notes           = EXCLUDED.notes,
+      commission_rate = EXCLUDED.commission_rate,
       updated_at      = NOW()
     RETURNING id
   `, [
@@ -231,7 +236,8 @@ export async function upsertBrief(brief) {
     brief.budget || '',
     brief.flightWeeks || '4',
     brief.campaignGoal || 'awareness',
-    brief.notes || ''
+    brief.notes || '',
+    brief.commissionRate || '0'
   ])
   return rows[0]
 }

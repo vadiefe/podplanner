@@ -12,7 +12,7 @@ const INDUSTRIES = [
 const EMPTY_BRIEF = {
   id: '', brandName: '', brandDesc: '', category: '', targetAudience: '',
   ageRange: '', gender: 'all', budget: '', flightWeeks: '4',
-  campaignGoal: 'awareness', notes: ''
+  campaignGoal: 'awareness', notes: '', commissionRate: '0'
 }
 
 function goalLabel(g) {
@@ -55,7 +55,7 @@ export default function BriefPage({ brief, setBrief, savedBriefs, setSavedBriefs
 
   // Load a saved brief into the editor
   function loadBrief(saved) {
-    setBrief({ ...EMPTY_BRIEF, ...saved })
+    setBrief({ ...EMPTY_BRIEF, ...saved, commissionRate: saved.commissionRate || '0' })
     setActiveBriefId(saved.id)
   }
 
@@ -118,6 +118,7 @@ export default function BriefPage({ brief, setBrief, savedBriefs, setSavedBriefs
                     {b.category && <Tag color="blue">{b.category}</Tag>}
                     {b.budget && <span className={s.briefCardBudget}>${Number(b.budget).toLocaleString()}</span>}
                     {b.campaignGoal && <Tag>{goalLabel(b.campaignGoal)}</Tag>}
+                    {b.commissionRate && b.commissionRate !== '0' && <Tag color="green">+{b.commissionRate}% fee</Tag>}
                   </div>
                   {b.updatedAt && (
                     <p className={s.briefCardDate}>
@@ -223,6 +224,23 @@ export default function BriefPage({ brief, setBrief, savedBriefs, setSavedBriefs
                   <Select value={brief.flightWeeks} onChange={e => upd('flightWeeks', e.target.value)}>
                     {[2, 4, 6, 8, 12, 16, 24, 52].map(w => <option key={w} value={w}>{w} weeks</option>)}
                   </Select>
+                </FormGroup>
+              </Col>
+              <Col>
+                <FormGroup label="Commission / service fee">
+                  <Select value={brief.commissionRate || '0'} onChange={e => upd('commissionRate', e.target.value)}>
+                    <option value="0">No markup (0%)</option>
+                    <option value="10">10%</option>
+                    <option value="15">15%</option>
+                    <option value="20">20%</option>
+                    <option value="25">25%</option>
+                    <option value="30">30%</option>
+                    <option value="40">40%</option>
+                    <option value="50">50%</option>
+                  </Select>
+                  {brief.commissionRate && brief.commissionRate !== '0' && (
+                    <p style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ Costs will be marked up {brief.commissionRate}% in the client plan</p>
+                  )}
                 </FormGroup>
               </Col>
             </Row>

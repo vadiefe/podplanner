@@ -40,7 +40,7 @@ export default function App() {
   const [brief, setBrief] = useState({
     brandName: '', brandDesc: '', category: '', targetAudience: '',
     ageRange: '', gender: 'all', budget: '', flightWeeks: '4',
-    campaignGoal: 'awareness', notes: ''
+    campaignGoal: 'awareness', notes: '', commissionRate: '0'
   })
   const [plan, setPlan] = useState(null)
   const [savedBriefs, setSavedBriefs] = useState([])

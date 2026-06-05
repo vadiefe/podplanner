@@ -359,6 +359,8 @@ function parseCSVLine(line) {
 // ── Generate media plan ───────────────────────────────────────────────────────
 
 app.post('/api/generate-plan', async (req, res) => {
+  req.setTimeout(120000)
+  res.setTimeout(120000)
   const { podcasts, brief } = req.body
   if (!podcasts?.length) return res.status(400).json({ error: 'No podcasts provided' })
   if (!brief?.brandName) return res.status(400).json({ error: 'No brief provided' })
@@ -382,13 +384,16 @@ app.post('/api/generate-plan', async (req, res) => {
   const candidates = podcasts
     .map(p => ({ p, score: scoreShow(p) }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, 80)
+    .slice(0, 50)
     .map(x => x.p)
 
   console.log('Plan generation:', podcasts.length, 'shows filtered to', candidates.length, 'candidates')
 
+  // Truncate long text fields to keep prompt within token limits
+  const trunc = (s, max) => s && s.length > max ? s.slice(0, max) + '…' : (s || '')
+
   const podcastList = candidates.map((p, i) =>
-    `${i + 1}. "${p.name}" | network: ${p.adNetwork || 'independent'} | category: ${p.category || 'unknown'} | ep_listeners: ${p.listenersPerEp || 'unknown'} | monthly_listeners: ${p.listenersMonthly || 'unknown'} | frequency: ${p.releaseFrequency || 'unknown'} | CPM: $${p.cpm || 'unknown'} | formats: ${p.sponsorshipTypes || 'unknown'} | location: ${p.hostLocation || 'unknown'} | demographics: ${p.demographics || 'unknown'} | bio: ${p.showBio || 'n/a'} | notes: ${p.additionalNotes || ''}`
+    `${i + 1}. "${p.name}" | network: ${p.adNetwork || 'independent'} | category: ${p.category || 'unknown'} | ep_listeners: ${p.listenersPerEp || 'unknown'} | monthly_listeners: ${p.listenersMonthly || 'unknown'} | frequency: ${p.releaseFrequency || 'unknown'} | CPM: ${p.cpm || 'unknown'} | formats: ${trunc(p.sponsorshipTypes, 60)} | demographics: ${trunc(p.demographics, 80)} | bio: ${trunc(p.showBio, 120)} | notes: ${trunc(p.additionalNotes, 100)}`
   ).join('\n')
 
   const prompt = `You are a senior podcast media planner at a top agency. Create the optimal podcast media plan for this brand.
@@ -429,11 +434,47 @@ Respond ONLY with valid JSON — no markdown fences, no preamble:
 }`
 
   try {
+    console.log('Prompt size:', Math.round(prompt.length / 4), 'est. tokens')
     const response = await anthropicWithRetry({
       model: 'claude-opus-4-5',
       max_tokens: 3000,
       messages: [{ role: 'user', content: prompt }]
     })
+
+    const txt = response.content[0].text.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(txt)
+
+    // Apply commission/markup silently — client sees final numbers only
+    const commissionRate = parseFloat(brief.commissionRate) || 0
+    const markup = 1 + (commissionRate / 100)
+    console.log('Commission markup:', commissionRate + '%', '| multiplier:', markup)
+
+    const enriched = parsed.selections.map(s => {
+      const pod = podcasts.find(p =>
+        p.name === s.podcastName ||
+        p.name?.toLowerCase().includes(s.podcastName?.toLowerCase()) ||
+        s.podcastName?.toLowerCase().includes(p.name?.toLowerCase())
+      )
+      const rawCpm = pod?.cpm || 25
+      const cpm = Math.round(rawCpm * markup * 100) / 100
+      const allocatedBudget = Math.round(s.allocatedBudget * markup)
+      const impressions = Math.round((allocatedBudget / cpm) * 1000)
+      return {
+        ...s,
+        allocatedBudget,
+        cpm,
+        listenersPerEp: pod?.listenersPerEp || 0,
+        listenersMonthly: pod?.listenersMonthly || 0,
+        impressions,
+        adNetwork: pod?.adNetwork || '',
+        podcastCategory: pod?.category || '',
+        releaseFrequency: pod?.releaseFrequency || '',
+        demographics: pod?.demographics || '',
+        id: pod?.id || Math.random().toString(36).slice(2)
+      }
+    })
+
+    res.json({ rationale: parsed.rationale, selections: enriched })
   } catch (err) {
     console.error('Plan generation error:', err)
     res.status(500).json({ error: err.message })
