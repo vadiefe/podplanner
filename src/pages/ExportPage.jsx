@@ -84,14 +84,13 @@ export default function ExportPage({ plan, brief, onBack }) {
 </style>
 </head><body>
 <h1>Podcast Media Plan</h1>
-<p class="meta">${brief.brandName} · ${brief.category || 'Brand'} · $${parseFloat(brief.budget).toLocaleString()} budget · ${brief.flightWeeks} weeks · Generated ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+<p class="meta">${brief.brandName} · ${brief.category || 'Brand'} · ${brief.flightWeeks} weeks · Generated ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
 
 <div class="metrics">
-  <div class="metric"><div class="metric-label">Total budget</div><div class="metric-val">$${parseFloat(brief.budget).toLocaleString()}</div></div>
-  <div class="metric"><div class="metric-label">Allocated</div><div class="metric-val">$${Math.round(totalAlloc).toLocaleString()}</div></div>
+  <div class="metric"><div class="metric-label">Total plan cost</div><div class="metric-val">${Math.round(totalAlloc).toLocaleString()}</div></div>
   <div class="metric"><div class="metric-label">Est. impressions</div><div class="metric-val">${(totalImp / 1000).toFixed(0)}k</div></div>
   <div class="metric"><div class="metric-label">Shows selected</div><div class="metric-val">${plan.selections.length}</div></div>
-  <div class="metric"><div class="metric-label">Eff. CPM</div><div class="metric-val">$${effCPM.toFixed(2)}</div></div>
+  <div class="metric"><div class="metric-label">Eff. CPM</div><div class="metric-val">${effCPM.toFixed(2)}</div></div>
 </div>
 
 <h2>Strategy rationale</h2>
