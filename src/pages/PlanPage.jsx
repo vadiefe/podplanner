@@ -27,7 +27,7 @@ export default function PlanPage({ podcasts, brief, plan, setPlan, onNext, onBac
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-      setPlan({ ...data, totalBudget: parseFloat(brief.budget) })
+      setPlan({ ...data, totalBudget: parseFloat(brief.budget) })  // totalBudget kept internally for progress bar only
     } catch (e) {
       setError(e.message)
     }
@@ -100,12 +100,10 @@ export default function PlanPage({ podcasts, brief, plan, setPlan, onNext, onBac
 
       {/* Metrics */}
       <Metrics>
-        <MetricCard label="Total budget" value={`$${plan.totalBudget.toLocaleString()}`} />
-        <MetricCard label="Allocated" value={`$${Math.round(totalAlloc).toLocaleString()}`} color={remaining < 0 ? 'var(--red)' : undefined} />
-        <MetricCard label="Remaining" value={`$${Math.round(remaining).toLocaleString()}`} color={remaining < 0 ? 'var(--red)' : 'var(--green)'} />
+        <MetricCard label="Total plan cost" value={`${Math.round(totalAlloc).toLocaleString()}`} />
         <MetricCard label="Est. impressions" value={`${(totalImp / 1000).toFixed(0)}k`} />
-        <MetricCard label="Shows" value={plan.selections.length} />
-        <MetricCard label="Eff. CPM" value={effCPM > 0 ? `$${effCPM.toFixed(2)}` : '—'} />
+        <MetricCard label="Shows selected" value={plan.selections.length} />
+        <MetricCard label="Eff. CPM" value={effCPM > 0 ? `${effCPM.toFixed(2)}` : '—'} />
       </Metrics>
 
       {/* Budget bar */}
@@ -113,16 +111,8 @@ export default function PlanPage({ podcasts, brief, plan, setPlan, onNext, onBac
         <SectionTitle>Budget allocation by show</SectionTitle>
         <div className={s.budgetProgress}>
           <div className={s.budgetLabels}>
-            <span>Allocated ${Math.round(totalAlloc).toLocaleString()} of ${plan.totalBudget.toLocaleString()}</span>
-            <span style={{ color: remaining < 0 ? 'var(--red)' : 'var(--text-2)' }}>
-              {((totalAlloc / plan.totalBudget) * 100).toFixed(0)}%
-            </span>
-          </div>
-          <div className={s.progressTrack}>
-            <div className={s.progressFill} style={{
-              width: Math.min(100, (totalAlloc / plan.totalBudget) * 100) + '%',
-              background: remaining < 0 ? 'var(--red)' : 'var(--green)'
-            }} />
+            <span>Total plan cost: ${Math.round(totalAlloc).toLocaleString()}</span>
+            <span style={{ color: 'var(--text-2)' }}>{plan.selections.length} shows</span>
           </div>
         </div>
 

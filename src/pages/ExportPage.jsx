@@ -140,10 +140,10 @@ export default function ExportPage({ plan, brief, onBack }) {
     <div className="fade-in">
       <Metrics>
         <MetricCard label="Brand" value={brief.brandName} />
-        <MetricCard label="Budget allocated" value={`$${Math.round(totalAlloc).toLocaleString()}`} />
+        <MetricCard label="Total plan cost" value={`${Math.round(totalAlloc).toLocaleString()}`} />
         <MetricCard label="Est. impressions" value={`${(totalImp / 1000).toFixed(0)}k`} />
         <MetricCard label="Shows" value={plan.selections.length} />
-        <MetricCard label="Eff. CPM" value={`$${effCPM.toFixed(2)}`} />
+        <MetricCard label="Eff. CPM" value={`${effCPM.toFixed(2)}`} />
       </Metrics>
 
       <Card>
