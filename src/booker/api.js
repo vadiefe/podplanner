@@ -8,6 +8,7 @@ export const bapi = {
   saveShow: s => j('/api/booker/shows', 'POST', s),
   bulkSave: shows => j('/api/booker/shows/bulk', 'POST', { shows }),
   deleteShow: id => j(`/api/booker/shows/${id}`, 'DELETE'),
+  checkActivity: ids => j('/api/booker/shows/check-activity', 'POST', { ids }),
   deleteAllShows: () => j('/api/booker/shows', 'DELETE'),
   getBriefs: () => j('/api/booker/briefs', 'GET'),
   saveBrief: b => j('/api/booker/briefs', 'POST', b),

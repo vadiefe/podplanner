@@ -49,3 +49,7 @@
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 300; display: flex; align-items: center; justify-content: center; padding: 1rem; }
 .modal { background: var(--surface); border-radius: var(--radius); padding: 1.25rem; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
 @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } .sidebar { position: static; } .main { padding: 1rem; } }
+
+.act { font-size: 12px; white-space: nowrap; color: var(--text3, #888); }
+.act_active { color: #1a7f4b; }
+.act_stale { color: #b42318; font-weight: 600; }

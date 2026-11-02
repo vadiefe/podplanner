@@ -29,7 +29,18 @@ function autoMap(headers) {
   }
   return map
 }
-const num = v => parseFloat(String(v ?? '').replace(/[^0-9.]/g, '')) || 0
+const num = v => { const m = String(v ?? '').replace(/,/g, '').match(/\d+(\.\d+)?/); const n = m ? parseFloat(m[0]) : 0; return n > 99999999 ? 0 : n }
+const STALE_DAYS = 90
+const daysSince = d => d ? Math.floor((Date.now() - new Date(d + 'T00:00:00Z').getTime()) / 86400000) : null
+function activity(p) {
+  const st = p.activityStatus
+  if (!st) return { key: 'unchecked', label: 'Not checked', cls: '' }
+  const d = daysSince(p.lastEpisode)
+  if (d == null) return { key: 'unknown', label: st === 'notfound' ? 'Feed not found' : st === 'error' ? 'Check failed' : 'No date found', cls: '' }
+  const low = st === 'lowmatch' ? ' (verify match)' : ''
+  if (d > STALE_DAYS) return { key: 'stale', label: `Inactive ${d}d${low}`, cls: 'stale' }
+  return { key: 'active', label: `${p.lastEpisode}${low}`, cls: 'active' }
+}
 const EMPTY = { id: '', name: '', category: '', listenersPerEp: '', listenersMonthly: '', location: '', showBio: '', notes: '', url: '', interviewCost: '', hostEmail: '' }
 
 export default function ShowsPage({ shows, setShows, dbReady, onNext }) {
@@ -37,6 +48,8 @@ export default function ShowsPage({ shows, setShows, dbReady, onNext }) {
   const [status, setStatus] = useState(null)
   const [edit, setEdit] = useState(null)
   const [q, setQ] = useState('')
+  const [filter, setFilter] = useState('all')
+  const [checking, setChecking] = useState(null)
   const fileRef = useRef()
 
   async function handleFile(file) {
@@ -97,7 +110,33 @@ export default function ShowsPage({ shows, setShows, dbReady, onNext }) {
     download(`interview_library_${new Date().toISOString().slice(0, 10)}.csv`, csv)
   }
 
-  const shown = shows.filter(p => !q || [p.name, p.category, p.location].join(' ').toLowerCase().includes(q.toLowerCase()))
+  async function checkAll() {
+    if (!dbReady) { setStatus({ type: 'error', msg: 'Activity check needs the database connection.' }); return }
+    const ids = shows.map(x => x.id), B = 8
+    let done = 0, failed = 0
+    setChecking({ done: 0, total: ids.length })
+    for (let i = 0; i < ids.length; i += B) {
+      try {
+        const { results } = await bapi.checkActivity(ids.slice(i, i + B))
+        const map = Object.fromEntries(results.map(r => [r.id, r]))
+        setShows(prev => prev.map(x => map[x.id] ? { ...x, ...map[x.id] } : x))
+      } catch (e) { failed += ids.slice(i, i + B).length }
+      done = Math.min(i + B, ids.length)
+      setChecking({ done, total: ids.length })
+    }
+    setChecking(null)
+    setStatus({ type: failed ? 'error' : 'success', msg: failed ? `Checked ${ids.length - failed} shows; ${failed} could not be checked — run it again.` : `Checked ${ids.length} shows.` })
+    setTimeout(() => setStatus(null), 8000)
+  }
+  const staleShows = shows.filter(p => activity(p).key === 'stale')
+  function removeStale() {
+    if (!staleShows.length || !confirm(`Remove ${staleShows.length} shows with no episode in ${STALE_DAYS}+ days? This cannot be undone.`)) return
+    const gone = new Set(staleShows.map(x => x.id))
+    setShows(prev => prev.filter(x => !gone.has(x.id)))
+    if (dbReady) staleShows.forEach(x => bapi.deleteShow(x.id).catch(console.error))
+  }
+
+  const shown = shows.filter(p => (!q || [p.name, p.category, p.location].join(' ').toLowerCase().includes(q.toLowerCase())) && (filter === 'all' || activity(p).key === filter))
 
   return (
     <div className="fade-in">
@@ -139,6 +178,11 @@ export default function ShowsPage({ shows, setShows, dbReady, onNext }) {
           <div className={s.tools}>
             <input className={s.search} placeholder="Search…" value={q} onChange={e => setQ(e.target.value)} />
             <Btn sm onClick={() => setEdit({ ...EMPTY })}><i className="ti ti-plus" />Add show</Btn>
+            {shows.length > 0 && <select className={s.search} value={filter} onChange={e => setFilter(e.target.value)}>
+              <option value="all">All shows</option><option value="stale">Inactive {STALE_DAYS}+ days</option><option value="active">Active</option><option value="unknown">No date / not found</option><option value="unchecked">Not checked</option>
+            </select>}
+            {shows.length > 0 && <Btn sm disabled={!!checking} onClick={checkAll}><i className="ti ti-activity" />{checking ? `Checking ${checking.done}/${checking.total}…` : 'Check activity'}</Btn>}
+            {staleShows.length > 0 && <Btn sm danger onClick={removeStale}><i className="ti ti-trash" />Remove inactive ({staleShows.length})</Btn>}
             {shows.length > 0 && <Btn sm onClick={exportCSV}><i className="ti ti-download" />Export CSV</Btn>}
             {shows.length > 0 && <Btn sm danger onClick={() => { if (confirm('Remove all shows from the interview library?')) { setShows([]); if (dbReady) bapi.deleteAllShows().catch(console.error) } }}><i className="ti ti-trash" />Clear all</Btn>}
           </div>
@@ -146,7 +190,7 @@ export default function ShowsPage({ shows, setShows, dbReady, onNext }) {
         {shows.length === 0 ? <Empty icon="ti-microphone-2" title="No shows yet" sub="Upload a file or add a show manually." /> : (
           <div className={s.tableWrap}>
             <table className={s.table}>
-              <thead><tr><th>Podcast</th><th>Category</th><th>Ep. listeners</th><th>Monthly</th><th>Location</th><th>Booking cost</th><th>Email</th><th></th></tr></thead>
+              <thead><tr><th>Podcast</th><th>Category</th><th>Ep. listeners</th><th>Monthly</th><th>Location</th><th>Booking cost</th><th>Last episode</th><th>Email</th><th></th></tr></thead>
               <tbody>
                 {shown.map(p => (
                   <tr key={p.id}>
@@ -156,6 +200,7 @@ export default function ShowsPage({ shows, setShows, dbReady, onNext }) {
                     <td>{p.listenersMonthly ? p.listenersMonthly.toLocaleString() : '—'}</td>
                     <td>{p.location}</td>
                     <td>{p.interviewCost ? money(p.interviewCost) : '—'}</td>
+                    <td title={p.feedMatch ? 'Matched feed: ' + p.feedMatch : ''}><span className={`${s.act} ${activity(p).cls ? s['act_' + activity(p).cls] : ''}`}>{activity(p).label}</span></td>
                     <td className={s.email}>{p.hostEmail}</td>
                     <td className={s.rowBtns}>
                       <button onClick={() => setEdit({ ...p })} title="Edit"><i className="ti ti-pencil" /></button>

@@ -50,6 +50,10 @@ export async function initBookerDB() {
       offer JSONB NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+    ALTER TABLE ib_shows ADD COLUMN IF NOT EXISTS last_episode DATE;
+    ALTER TABLE ib_shows ADD COLUMN IF NOT EXISTS activity_status TEXT DEFAULT '';
+    ALTER TABLE ib_shows ADD COLUMN IF NOT EXISTS feed_match TEXT DEFAULT '';
+    ALTER TABLE ib_shows ADD COLUMN IF NOT EXISTS activity_checked TIMESTAMPTZ;
   `)
   console.log('✅ Interview Booker tables ready (ib_shows, ib_briefs, ib_offers)')
 }
@@ -58,6 +62,7 @@ const SHOW_SELECT = `SELECT id, name, category,
   listeners_per_ep AS "listenersPerEp", listeners_monthly AS "listenersMonthly",
   location, show_bio AS "showBio", notes, url,
   interview_cost::float AS "interviewCost", host_email AS "hostEmail",
+  last_episode::text AS "lastEpisode", activity_status AS "activityStatus", feed_match AS "feedMatch",
   created_at AS "createdAt" FROM ib_shows`
 
 async function upsertShow(s) {
@@ -68,8 +73,8 @@ async function upsertShow(s) {
       listeners_per_ep=EXCLUDED.listeners_per_ep, listeners_monthly=EXCLUDED.listeners_monthly,
       location=EXCLUDED.location, show_bio=EXCLUDED.show_bio, notes=EXCLUDED.notes, url=EXCLUDED.url,
       interview_cost=EXCLUDED.interview_cost, host_email=EXCLUDED.host_email, updated_at=NOW()`,
-    [s.id, s.name || '', s.category || '', parseInt(s.listenersPerEp) || 0, parseInt(s.listenersMonthly) || 0,
-     s.location || '', s.showBio || '', s.notes || '', s.url || '', parseFloat(s.interviewCost) || 0, s.hostEmail || ''])
+    [s.id, s.name || '', s.category || '', Math.min(parseInt(s.listenersPerEp) || 0, 2000000000), Math.min(parseInt(s.listenersMonthly) || 0, 2000000000),
+     s.location || '', s.showBio || '', s.notes || '', s.url || '', Math.min(parseFloat(s.interviewCost) || 0, 99999999), s.hostEmail || ''])
 }
 
 // ── Shows ──
@@ -83,8 +88,9 @@ bookerRouter.post('/shows', async (req, res) => {
 bookerRouter.post('/shows/bulk', async (req, res) => {
   try {
     const shows = req.body.shows || []
-    for (const s of shows) await upsertShow(s)
-    res.json({ ok: true, count: shows.length })
+    let saved = 0; const failed = []
+    for (const s of shows) { try { await upsertShow(s); saved++ } catch (e) { failed.push(s.name) } }
+    res.json({ ok: true, count: saved, failed })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 bookerRouter.delete('/shows/:id', async (req, res) => {
@@ -94,6 +100,59 @@ bookerRouter.delete('/shows/:id', async (req, res) => {
 bookerRouter.delete('/shows', async (req, res) => {
   try { await pool.query('DELETE FROM ib_shows'); res.json({ ok: true }) }
   catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+
+// ── Activity check: newest episode date from the show's public RSS feed ──
+const cleanName = n => String(n || '').replace(/\(.*?\)/g, ' ').split(' / ')[0].split(' — ')[0]
+  .replace(/\b(podcast|show|network|the)\b/gi, ' ').replace(/[^a-z0-9 ]/gi, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
+function similarity(a, b) {
+  const A = new Set(cleanName(a).split(' ').filter(Boolean)), B = new Set(cleanName(b).split(' ').filter(Boolean))
+  if (!A.size || !B.size) return 0
+  let hit = 0; for (const w of A) if (B.has(w)) hit++
+  return hit / Math.max(A.size, B.size)
+}
+const UA = { 'User-Agent': 'Mozilla/5.0 (podcast-freshness-check)' }
+async function fetchText(url, ms = 20000) {
+  const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(ms), redirect: 'follow' })
+  if (!r.ok) throw new Error('HTTP ' + r.status)
+  return r.text()
+}
+function newestPubDate(xml) {
+  let newest = null
+  for (const m of xml.matchAll(/<item[\s>][\s\S]*?<\/item>/g)) {
+    const d = m[0].match(/<pubDate>([^<]+)<\/pubDate>/i)
+    if (!d) continue
+    const t = new Date(d[1].trim())
+    if (!isNaN(t) && (!newest || t > newest)) newest = t
+  }
+  return newest
+}
+async function checkOne(show) {
+  try {
+    const q = encodeURIComponent(cleanName(show.name) || show.name)
+    const data = JSON.parse(await fetchText(`https://itunes.apple.com/search?media=podcast&entity=podcast&limit=6&term=${q}`))
+    let best = null, score = 0
+    for (const r of data.results || []) {
+      const sc = similarity(show.name, r.collectionName)
+      if (r.feedUrl && sc > score) { best = r; score = sc }
+    }
+    if (!best) return { status: 'notfound', last: null, match: '' }
+    const newest = newestPubDate(await fetchText(best.feedUrl, 30000))
+    return { status: score < 0.5 ? 'lowmatch' : (newest ? 'found' : 'nodate'), last: newest ? newest.toISOString().slice(0, 10) : null, match: best.collectionName }
+  } catch (e) { return { status: 'error', last: null, match: String(e.message || e).slice(0, 80) } }
+}
+bookerRouter.post('/shows/check-activity', async (req, res) => {
+  try {
+    const ids = (req.body.ids || []).slice(0, 12)
+    const { rows } = await pool.query('SELECT id, name FROM ib_shows WHERE id = ANY($1)', [ids])
+    const results = await Promise.all(rows.map(async sh => {
+      const r = await checkOne(sh)
+      await pool.query(`UPDATE ib_shows SET last_episode=$2, activity_status=$3, feed_match=$4, activity_checked=NOW() WHERE id=$1`, [sh.id, r.last, r.status, r.match])
+      return { id: sh.id, lastEpisode: r.last, activityStatus: r.status, feedMatch: r.match }
+    }))
+    res.json({ ok: true, results })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ── Briefs ──
