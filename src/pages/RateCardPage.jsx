@@ -274,6 +274,15 @@ export default function RateCardPage({ podcasts, setPodcasts, dbReady, onNext })
     setTimeout(() => setStatus(null), 6000)
   }
 
+  function exportLibraryCSV() {
+    const cols = [['name','Show Name'],['adNetwork','Ad Network'],['category','Category'],['listenersPerEp','Listeners per Episode'],['listenersMonthly','Monthly Listeners'],['releaseFrequency','Release Frequency'],['cpm','CPM'],['sponsorshipTypes','Sponsorship Types'],['hostLocation','Host Location'],['demographics','Demographics'],['url','URL'],['showBio','Show Bio'],['additionalNotes','Additional Notes']]
+    const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"'
+    const csv = [cols.map(c => esc(c[1])).join(','), ...podcasts.map(p => cols.map(c => esc(p[c[0]])).join(','))].join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
+    a.download = `podcast_library_${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+  }
   function openAdd() { setEditShow({ show: { ...EMPTY_POD, id: String(Date.now()) }, idx: -1 }) }
   function openEdit(i) { setEditShow({ show: { ...podcasts[i] }, idx: i }) }
   function handleSave(saved) {
@@ -361,6 +370,7 @@ export default function RateCardPage({ podcasts, setPodcasts, dbReady, onNext })
           <div className={s.tableHeader}>
             <SectionTitle style={{ margin: 0 }}>{podcasts.length} shows in library</SectionTitle>
             <div className={s.tableActions}>
+              <Btn sm onClick={exportLibraryCSV}><i className="ti ti-download" />Export CSV</Btn>
               <Btn sm onClick={openAdd}><i className="ti ti-plus" />Add manually</Btn>
               <Btn sm danger onClick={() => { if (confirm('Remove all shows?')) { setPodcasts([]); if (dbReady) api.deleteAllShows().catch(console.error) } }}>
                 <i className="ti ti-trash" />Clear all
