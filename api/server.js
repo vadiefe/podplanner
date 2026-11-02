@@ -11,6 +11,7 @@ import {
   deleteShow, deleteAllShows, savePlan, getPlans, deletePlan,
   getAllBriefs, upsertBrief, deleteBrief
 } from './db.js'
+import { bookerRouter, initBookerDB } from './booker.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -49,6 +50,8 @@ async function anthropicWithRetry(params, maxRetries = 4) {
   }
   throw lastErr
 }
+
+app.use('/api/booker', bookerRouter)
 
 // ── DB: Shows ─────────────────────────────────────────────────────────────────
 
@@ -500,6 +503,7 @@ app.get('*', (req, res) => {
 async function start() {
   if (process.env.DATABASE_URL) {
     await initDB()
+    try { await initBookerDB() } catch (e) { console.error('Booker DB init failed:', e.message) }
   } else {
     console.warn('⚠️  No DATABASE_URL — running without database persistence')
   }

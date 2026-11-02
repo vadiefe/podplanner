@@ -1,0 +1,14 @@
+.home { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem 1.25rem; gap: 2rem; }
+.hero { text-align: center; }
+.hero h1 { font-size: 28px; font-weight: 400; margin: 6px 0; }
+.hero p { color: var(--text-2); font-size: 15px; }
+.logo { font-size: 34px; }
+.choices { display: grid; grid-template-columns: repeat(2, minmax(0, 340px)); gap: 1rem; width: 100%; justify-content: center; }
+.choice { text-align: left; background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1.5rem; cursor: pointer; display: flex; flex-direction: column; gap: 8px; font: inherit; color: var(--text); transition: border-color .15s, transform .15s; }
+.choice:hover { border-color: var(--text); transform: translateY(-2px); }
+.choice i { font-size: 26px; }
+.choice h2 { font-size: 17px; font-weight: 500; }
+.choice p { font-size: 13px; color: var(--text-2); line-height: 1.5; flex: 1; }
+.choice span { font-size: 13px; font-weight: 500; }
+.homeBtn { position: fixed; left: 14px; bottom: 14px; z-index: 200; background: var(--surface); border: 0.5px solid var(--border-strong); border-radius: 999px; padding: 7px 14px; font-size: 12px; cursor: pointer; color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+@media (max-width: 720px) { .choices { grid-template-columns: 1fr; } }
